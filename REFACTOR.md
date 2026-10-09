@@ -305,7 +305,13 @@ strategy in rather than bring the singleton back.
 
 Read `pricing/`. Not coded, one sentence.
 
-**The pattern.** Which one fits `PriceCalculator`, and the problem that makes
-it fit. Name the problem.
+**The pattern.** Decorator fits `PriceCalculator`: a slot's price is a base
+hourly amount passed through independent adjustments that all apply in turn
+(weekend surcharge, long-booking discount, tier discount), so each rule could
+wrap the price before it behind the same interface, and adding a rule would be
+a new class instead of an edit to the one tested `price()` method.
 
-**Would you apply it today?** Yes or no, one line, with the reason.
+**Would you apply it today?** No: four stable rules in one short, readable
+method, all pinned by six tests and used only inside this repo, so it can wait
+and be added as a preparatory refactoring when a new rule (such as a flat fee)
+actually arrives.
