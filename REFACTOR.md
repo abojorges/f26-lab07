@@ -193,38 +193,111 @@ Read `notify/`. It works and the outbox tests pass.
 
 ### The patterns present
 
-List every design pattern you can name in that package. For each one, the class
-or classes that carry it.
+- **Singleton:** `NotifierFactory` (private constructor, `getInstance()`).
+- **Factory:** `NotifierFactory.createStrategy()`.
+- **Strategy:** `NotificationStrategy`, implemented by
+  `EmailNotificationStrategy` and held by `NotificationHub`.
+- **Observer:** `NotificationHub` publishes to `NotificationSubscriber`s.
+  `OutboxSubscriber` is the only one.
+- **Adapter (a small one):** `OutboxSubscriber` wraps `Outbox` so it fits the
+  subscriber interface.
 
 ### The problem each one solves
 
-For each pattern you listed, what would have to be true about the requirements
-for that pattern to be the right call? One sentence each, not in terms of
-"flexibility".
+- **Singleton:** there is one shared thing with state, such as a mail
+  connection or a send quota, and every part of the program must use the same
+  copy.
+- **Factory:** more than one kind of object can be built, and the rule for
+  picking one (a setting, a member's preference) should live in one place
+  instead of in every caller.
+- **Strategy:** there are several ways to do the same job, like formatting a
+  message for email or for SMS, and the program picks between them while it
+  runs.
+- **Observer:** one event has several independent reactions, and the code that
+  raises the event shouldn't have to know who reacts.
+- **Adapter:** a class you already have doesn't fit an interface that other
+  code requires.
 
 ### Which of those problems exist here
 
-For each pattern, does the problem it solves exist in this codebase? Point at
-the code that settles it.
+None of them.
+- **Singleton:** no. `NotifierFactory` has no state to share; its only field is
+  the instance itself (`NotifierFactory.java:6`). The only thing that cares
+  there is one copy is the test `factoryHandsBackTheSameInstance`.
+- **Factory:** no. `createStrategy()` takes no input and always returns
+  `new EmailNotificationStrategy()` (`NotifierFactory.java:19-21`). Its one
+  caller is `NotificationHub.java:22`.
+- **Strategy:** no. There is one implementation, and it couldn't be swapped
+  anyway: the hub picks it itself at `NotificationHub.java:22`, and no
+  constructor accepts one, so not even a test can pass in another.
+- **Observer:** no. There is one subscriber, added by the hub's own constructor
+  (`NotificationHub.java:23`). Nothing else calls `subscribe`, and
+  `hubDeliversToItsOneSubscriber` asserts there is exactly one.
+- **Adapter:** no. `OutboxSubscriber` exists only to satisfy the Observer
+  interface; `Outbox.append` already does the job.
+
+So `notify/` uses four patterns to put one formatted line into one list.
 
 ### The simpler structure
 
-**Your proposal.** What replaces `notify/`. Sketch the classes and the one
-method that matters.
+**Your proposal.** Keep three classes: `NotificationHub`, `NotificationMessage`
+and `Outbox`. The hub keeps its name, both constructors and `getOutbox()`, so
+`BookingWorkflow` and the tests don't change. `publish` does the work itself:
 
-**What stays the same.** The tested behavior it must still produce, named
-precisely enough that a reader can check it against the shipped tests.
+```java
+public void publish(NotificationMessage m) {
+    outbox.append("To: " + m.recipient() + " | Subject: " + m.subject() + " | " + m.body());
+}
+```
 
-**What you would keep, if anything.** If you would keep one interface, say
-which and why. "None of it" is a fine answer if you can defend it.
+Delete `NotifierFactory`, `NotificationStrategy`, `EmailNotificationStrategy`,
+`NotificationSubscriber` and `OutboxSubscriber`. Eight files become three.
+
+**What stays the same.**
+- The text is exactly `To: <recipient> | Subject: <subject> | <body>`, as
+  `publishedMessageLandsInTheOutboxFullyRendered` and
+  `aConfirmationFromTheWorkflowReachesTheOutbox` check.
+- There is one outbox entry per `publish`, in order. Every
+  `hub.getOutbox().size()` check in `BookingWorkflowTest` covers this, for
+  example 2 in `regularCancelReleasesTheSlotAndNotifies` and 4 in
+  `recurringSubmitBooksEveryWeekOfAnOpenSeries`.
+- `NotificationMessage` still rejects a blank recipient or a null subject.
+- Two shipped tests check the structure, not the behavior:
+  `hubDeliversToItsOneSubscriber` and `factoryHandsBackTheSameInstance`. They
+  would go with the layers they test, which is why this stays a proposal: we
+  can't delete shipped tests.
+
+**What you would keep, if anything.** None of the interfaces. The one
+interface usually worth keeping in a setup like this sits in front of the mail
+vendor, so tests can swap in a fake. There is no vendor here: `Outbox` is in
+memory and the tests read it directly. `Outbox` stays as a plain class because
+it's what the tests check.
 
 ### What would bring each layer back
 
-For at least two of the layers you would remove, what requirement, if it
-arrived next sprint, would make that layer the right structure? Be specific
-about the requirement, not about the pattern.
+- **Strategy:** members can choose SMS instead of email, and an SMS needs a
+  short text with no subject line. That's two formats that change for
+  different reasons.
+- **Factory:** the channel is picked by rules (the member's preference, or a
+  daily digest during quiet hours), and more than one place sends
+  notifications. That rule belongs in one place.
+- **Observer:** every notification must also go to an audit log and to the
+  front desk's screen, not only to the outbox. That's several independent
+  receivers for each message.
 
-**Misuse or anti-pattern?** Say which this is and why the distinction matters.
+**Misuse or anti-pattern?** Misuse. Each one is a sound pattern; the problem it
+solves just isn't here, so the critique is "not here."
+
+The distinction matters because the fix is different:
+- **Misuse:** delete it now and add it back when the requirement arrives. That
+  is cheap, because the tests pin the behavior.
+- **Anti-pattern:** it is harmful even when the problem is real, so you would
+  replace it with something else.
+
+The closest thing to an anti-pattern here is the hub grabbing a global
+singleton inside its own constructor. That hidden dependency is why the
+strategy can't be swapped, even in a test. If new channels do arrive, pass the
+strategy in rather than bring the singleton back.
 
 ---
 
