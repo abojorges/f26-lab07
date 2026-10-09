@@ -49,3 +49,7 @@ From this directory. `SETUP.md` says what green looks like.
 - CI: `.github/workflows/ci.yml`, same command as above
 
 See the Lab 7 handout on the course page for the three milestones you show a TA.
+
+## AI tools used
+
+Tools used: Claude Code (desktop app) with Claude Opus 5.5 (`claude-opus-5-5`).
