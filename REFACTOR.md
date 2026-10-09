@@ -13,20 +13,44 @@ Keep it short and specific. Point at methods, call sites, and test names.
 
 ### The pin (write this section before you direct the refactor)
 
-**The pin.** File and test name, plus one sentence naming the method and the
-observable result it pins. Not "recurring bookings work". Green against the
-shipped code, and you did not edit or delete an existing test method to get
-there.
+**The pin.**
+`src/test/java/edu/cmu/cs214/scheduling/workflow/BookingWorkflowCharacterizationTest.java`,
+`recurringSeriesSkipsAWeekThatStartsWhenAnExistingBookingEnds`. It pins this:
+`BookingWorkflow.submit` on a 3-week recurring request (C-200, Mondays
+9:00–10:00 from Oct 5) skips week 2, which starts exactly when an existing
+8:00–9:00 booking ends. The outcome is accepted, with `getSkipped()` equal to
+`[2026-10-12T09:00 to 2026-10-12T10:00]`, occurrence indexes `[1, 3]`, and the
+message `series S-1: 2 booked, 1 skipped`.
 
-**Why that one, and does a shipped test already cover it?** Of everything
-`BookingWorkflow` does, why is this the behavior worth a test? If something
-shipped comes close, say what your pin adds. If nothing does, say how you
-checked.
+The pin is green against the shipped code (`Tests run: 36, Failures: 0`). It
+lives in a new class, so no existing test method was touched. The expected
+values come from the code itself: I first asserted `3 booked, 0 skipped`, and
+the failure printed the actual result.
 
-**What a regeneration would do differently here.** Suppose someone
-threw this class away and regenerated it from a one-line description of what a
-booking workflow does. Name the decision that would be made a second time, and
-say which way it would probably go.
+**Why that one, and does a shipped test already cover it?**
+- **Why it matters.** The recurring room check (`BookingWorkflow.java:121-122`)
+  uses `<= 0`. The other three overlap checks (`:68-69`, `:79-80`, `:152-153`)
+  use `< 0`, and `TimeSlot` documents an exclusive end. The refactor puts this
+  boundary at risk: four near-identical overlap checks invite one shared
+  helper, and that helper would quietly turn the recurring `<=` into `<`.
+- **No shipped test covers it.**
+  - `regularSubmitAcceptsASlotThatStartsWhenAnotherEnds` pins the same
+    boundary, but for REGULAR only.
+  - `recurringSubmitBooksEveryWeekOfAnOpenSeries` uses an empty room, so the
+    skip branch never runs.
+  - A grep shows no shipped test reads `getSkipped()`.
+- **How I checked.** With `<=` changed to `<` at `:121-122`, the shipped 35
+  tests stay green and only this pin fails.
+- I am not claiming `<=` is right. Fixing it would be a behavior change in its
+  own commit, not part of this refactor.
+
+**What a regeneration would do differently here.** The decision is whether a
+weekly occurrence that only touches an existing booking counts as a conflict.
+A regeneration would almost certainly write one half-open overlap check
+(`start < otherEnd && otherStart < end`), matching `TimeSlot` and the regular
+path, so it would book week 2 instead of skipping it. It might also re-decide
+skip versus reject for a taken week. Today the series is booked partially, and
+the occurrence index keeps the gap.
 
 ### The directive
 
